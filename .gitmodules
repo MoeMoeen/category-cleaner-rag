@@ -1,0 +1,3 @@
+[submodule "product-taxonomy"]
+	path = product-taxonomy
+	url = https://github.com/Shopify/product-taxonomy.git
