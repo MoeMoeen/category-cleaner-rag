@@ -167,3 +167,39 @@ def categorize_inputs(inputs: list[str]) -> dict[str, list[str]]:
         mapping[best].append(raw)
 
     return mapping
+
+
+if __name__ == "__main__":
+    # Simple manual test runner for this module
+    import argparse
+    import sys
+
+    parser = argparse.ArgumentParser(description="RAG pipeline smoke test")
+    parser.add_argument("--query", type=str, default="shoes", help="Query/category to search")
+    parser.add_argument("--k", type=int, default=5, help="Top-k candidates to retrieve")
+    parser.add_argument("--force", action="store_true", help="Force rebuild of FAISS index")
+    parser.add_argument("--classify", action="store_true", help="Also run LLM classification on the retrieved candidates")
+    args = parser.parse_args()
+
+    if not OPENAI_API_KEY:
+        print("OPENAI_API_KEY not set; cannot run embeddings/LLM.")
+        sys.exit(1)
+
+    try:
+        build_index(force=args.force)
+        print(f"Index ready. Searching for: '{args.query}' (k={args.k})\n")
+        res = search_taxonomy(args.query, k=args.k)
+        cols = [c for c in ["full_path", "distance"] if c in res.columns]
+        print(res[cols].to_string(index=False))
+
+        if args.classify:
+            choice = classify_with_llm(args.query, res)
+            print(f"\nLLM choice: {choice}")
+    except Exception as e:
+        print(f"Error during test run: {e}")
+        sys.exit(1)
+
+
+# python rag_pipeline.py --query "women running shoes" --k 5
+# python rag_pipeline.py --query "baby stroller" --k 10 --force
+# python rag_pipeline.py --query "laptop bag" --classify

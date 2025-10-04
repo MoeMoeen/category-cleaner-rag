@@ -10,7 +10,7 @@ load_dotenv()
 # OpenAI settings
 OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
 EMBED_MODEL: str = os.getenv("OPENAI_EMBED_MODEL", "text-embedding-3-small")
-LLM_MODEL: str = os.getenv("OPENAI_LLM_MODEL", "gpt-5")
+LLM_MODEL: str = os.getenv("OPENAI_LLM_MODEL", "o3")
 
 # Paths
 TAXONOMY_PATH: str = os.getenv("TAXONOMY_PATH", "product-taxonomy/dist/en/categories.json")
