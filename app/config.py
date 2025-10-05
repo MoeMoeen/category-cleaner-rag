@@ -16,7 +16,7 @@ LLM_MODEL: str = os.getenv("OPENAI_LLM_MODEL", "o3")
 TAXONOMY_PATH: str = os.getenv("TAXONOMY_PATH", "product-taxonomy/dist/en/categories.json")
 DATA_DIR = Path(os.getenv("DATA_DIR", "data"))
 INDEX_FILENAME = os.getenv("INDEX_FILENAME", "faiss_index.bin")
-DF_FILENAME = os.getenv("DF_FILENAME", "taxonomy_df.parquet")
+DF_FILENAME = os.getenv("DF_FILENAME", "taxonomy_df.pkl")
 META_FILENAME = os.getenv("META_FILENAME", "faiss_index.meta.json")
 
 # RAG knobs

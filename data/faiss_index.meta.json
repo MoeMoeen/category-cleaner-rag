@@ -1,0 +1,9 @@
+{
+  "embed_model": "text-embedding-3-small",
+  "index_type": "IndexFlatIP",
+  "vector_dim": 1536,
+  "ntotal": 10711,
+  "taxonomy_sha256": "5860331fdd1eab454ee9a52f17b2cfc790fba65e2a74853c0edfc100b9231493",
+  "taxonomy_path": "product-taxonomy/dist/en/categories.json",
+  "built_at": 1759604700.0487158
+}

@@ -16,6 +16,7 @@ Implements:
 from __future__ import annotations
 
 import json
+import pickle
 import logging
 import random
 import threading
@@ -27,15 +28,11 @@ from typing import Any, List, Tuple
 
 import faiss
 import numpy as np
-import pandas as pd
 import openai
+import pandas as pd
 from rapidfuzz import fuzz, process
 
 from app.config import (
-    OPENAI_API_KEY,
-    EMBED_MODEL,
-    LLM_MODEL,
-    TAXONOMY_PATH,
     DATA_DIR,
     INDEX_FILENAME,
     DF_FILENAME,
@@ -44,6 +41,10 @@ from app.config import (
     DEFAULT_K,
     MIN_SCORE,
     NO_MATCH_LABEL,
+    EMBED_MODEL,
+    LLM_MODEL,
+    OPENAI_API_KEY,
+    TAXONOMY_PATH,
 )
 from app.taxonomy_loader import load_taxonomy
 
@@ -75,7 +76,7 @@ def _require_openai() -> Any:
     if not OPENAI_API_KEY:
         raise RuntimeError("OPENAI_API_KEY is missing. Set it in your .env before running.")
     if _client is None:
-        _client = openai.OpenAI()  # uses env var
+        _client = openai.OpenAI()  # uses env var # type: ignore[reportGeneralTypeIssues]
     return _client
 
 
@@ -159,7 +160,7 @@ def embed_texts(texts: List[str]) -> List[List[float]]:
     logger.info(f"Embedded {len(texts)} texts in {dur:.1f} ms (model={EMBED_MODEL})")
     return vecs
 
-# ----------------------------- Build / Load ----------------------------------
+# ----------------------------- Build Index / Load ----------------------------------
 def build_index(force: bool = False) -> None:
     """Build or load FAISS index + taxonomy DataFrame (thread-safe)."""
     global _index, _df
@@ -171,7 +172,8 @@ def build_index(force: bool = False) -> None:
             if meta and meta.embed_model == EMBED_MODEL and meta.taxonomy_sha256 == tax_hash:
                 logger.info("Loading FAISS index + DataFrame from disk...")
                 _index = faiss.read_index(str(INDEX_PATH))
-                _df = pd.read_parquet(DF_PATH)
+                # Load dataframe via pickle
+                _df = pickle.loads(DF_PATH.read_bytes())
                 # Guard for type checker
                 assert _index is not None
                 assert _df is not None
@@ -207,7 +209,8 @@ def build_index(force: bool = False) -> None:
 
         # Persist index + DF + metadata
         faiss.write_index(_index, str(INDEX_PATH))
-        _df.to_parquet(DF_PATH, index=False)
+        # Persist dataframe via pickle
+        DF_PATH.write_bytes(pickle.dumps(_df))
         meta = Meta(
             embed_model=EMBED_MODEL,
             index_type="IndexFlatIP",
@@ -314,7 +317,7 @@ Constraints:
     def _call():
         return client.chat.completions.create(
             model=LLM_MODEL,
-            temperature=0,
+            temperature=1,
             messages=[{"role": "system", "content": system},
                       {"role": "user", "content": user}]
         )
@@ -394,3 +397,47 @@ def categorize_inputs(
             }
 
     return (results, debug) if return_debug else results
+
+
+if __name__ == "__main__":
+    # Simple manual test runner for v2 pipeline
+    import argparse
+    import sys
+
+    parser = argparse.ArgumentParser(description="RAG v2 pipeline smoke test")
+    parser.add_argument("--queries", nargs="+", type=str, required=True, help="One or more queries")
+    parser.add_argument("--k", type=int, default=DEFAULT_K, help="Top-k candidates to retrieve")
+    parser.add_argument(
+        "--force-rebuild", action="store_true", help="Force rebuild of FAISS index and embeddings"
+    )
+    parser.add_argument("--classify", action="store_true", help="Also run LLM classification on the retrieved candidates")
+    parser.add_argument("--min-score", type=float, default=MIN_SCORE, help="Cosine threshold for NO_MATCH")
+    parser.add_argument("--debug", action="store_true", help="Return and print debug info for classification")
+    args = parser.parse_args()
+
+    try:
+        init_pipeline(force_rebuild=args.force_rebuild)
+        print(f"Index ready. Searching for: {args.queries} (k={args.k})\n")
+        cols = ["full_path", "score", "rank"]
+        for q in args.queries:
+            print(f"\n=== Query: {q} ===")
+            res = search_taxonomy(q, k=args.k)
+            use_cols = [c for c in cols if c in res.columns]
+            print(res[use_cols].to_string(index=False))
+
+        if args.classify:
+            if args.debug:
+                mapping, dbg = categorize_inputs(args.queries, k=args.k, min_score=args.min_score, return_debug=True)
+                print(f"\nMapping: {mapping}")
+                print(f"Debug: {json.dumps(dbg, indent=2)}")
+            else:
+                mapping = categorize_inputs(args.queries, k=args.k, min_score=args.min_score)
+                print(f"\nMapping: {mapping}")
+    except Exception as e:
+        print(f"Error during v2 test run: {e}")
+        sys.exit(1)
+
+
+# python rag_pipeline_v2.py --query "women running shoes" --k 5
+# python rag_pipeline_v2.py --query "laptop bag" --classify --debug
+# python rag_pipeline_v2.py --query "stroller" --k 8 --force-rebuild
